@@ -1,20 +1,21 @@
+import requests
+from PyQt5.QtCore import QThread, pyqtSignal
 
 class MistralClient:
-    def __init__(self,api_key,endpoint = 'https://api.mistral.ai/v1/chat/completions',model = 'mistral-large-latest'):
+    def __init__(self, api_key: str, endpoint: str = 'https://api.mistral.ai/v1/chat/completions', model: str = 'mistral-large-latest'):
         self.api_key = api_key
         self.model = model
         self.endpoint = endpoint
     
-    def generate_insights(self,respondent_data:dict,predicted_scores:dict,cohort_stats:dict,static_recommendations:list)->dict:
-        system_prompt: f"""
-        You are a clinical psychologist specializing in music therapy and mental health...
-        """ 
+    def generate_insights(self, respondent_data: dict, predicted_scores: dict, cohort_stats: dict, static_recommendations: list) -> dict:
+        system_prompt = """You are a clinical psychologist specializing in music therapy and mental health. Analyze the user's music listening behavior, predicted mental health scores, and cohort statistics to provide structured clinical insights and recommendations."""
+        
         user_prompt = f"""
         ###Respondent Data:
         Age: {respondent_data.get('age','N/A')}
         Gender:{respondent_data.get('gender','N/A')}
-        Avergae Daily Listening Hours: {respondent_data.get('hours','N/A')} hours
-        Predominant Genres:{','.join(respondent_data('genres',[]))}
+        Average Daily Listening Hours: {respondent_data.get('hours','N/A')} hours
+        Predominant Genres:{','.join(respondent_data.get('genres',[]))}
         Isophilicity: {respondent_data.get('Isophilicity','N/A')}
         ###Predicted Scores
         Anxiety :{predicted_scores.get('Anxiety',0.0):.2f},
@@ -31,50 +32,49 @@ class MistralClient:
 
         ###Static Recommendations
         {static_recommendations}
-
         """
         try:
-            headers : {
-                "Authorization":f"Bearer {self.api_key}",
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json"
             }
-            payload:{
-                "model":self.model,
-                "message":[
-                    {"role":"system","content":system_prompt},
-                    {"role":"user","content":user_prompt},
+            payload = {
+                "model": self.model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
                 ],
                 "temperature": 0.3 # low temperature for more clinical tone
             }
-            response = requests.post(self.endpoint,headers=headers,json = payload,timeout = 30)
+            response = requests.post(self.endpoint, headers=headers, json=payload, timeout=30)
             response.raise_for_status()
-            #parse response into json
+            # parse response into json
             data = response.json()
             markdown_content = data['choices'][0]['message']['content']
 
             # split content into insights and recommendations
             split_marker = '###Recommended Playlists / Artists'
             if split_marker in markdown_content:
-                parts = markdown_content.split(split_marker,1)
+                parts = markdown_content.split(split_marker, 1)
                 insights = parts[0].strip()
-                recommendations = split_market + parts[1]
+                recommendations = split_marker + parts[1]
             else:
                 # treat everything as insight
                 insights = markdown_content
                 recommendations = 'No structured recommendations found'
-            return{
-                "insights":insights,
+            return {
+                "insights": insights,
                 "recommendations": recommendations
             }
 
         except Exception as e:
-            raise Exception(f"Failed to generate AI Insights:{str(e)}")
+            raise Exception(f"Failed to generate AI Insights: {str(e)}")
 
 class AIWorker(QThread):
     finished = pyqtSignal(dict)
     error = pyqtSignal(str)
 
-    def __init__(self,client,respondent_data,predicted_scores,cohort_stats,static_recommendations) -> None:
+    def __init__(self, client, respondent_data, predicted_scores, cohort_stats, static_recommendations) -> None:
         super().__init__()
         self.client = client
         self.respondent_data = respondent_data
